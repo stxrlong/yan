@@ -27,7 +27,7 @@ namespace yan {
  * @param mem list member name
  * @param type member type, only support c/c++ basic type
  */
-// #define LIST_MEMBER(obj, mem, type, args...) __YAN_LIST_MEMBER__(obj, mem, type, ##args)
+#define LIST_MEMBER(obj, mem, type, args...) __YAN_LIST_MEMBER__(obj, mem, type, ##args)
 
 /**
  * @brief define an yan struct list member that the yan struct object is
@@ -36,8 +36,8 @@ namespace yan {
  * @param mem list member name
  * @param type member type, only support yan struct type define by yourself
  */
-// #define LIST_STRUCT_MEMBER(obj, mem, type, args...) __YAN_LIST_STRUCT_MEMBER__(obj, mem,
-// type,##args)
+#define LIST_STRUCT_MEMBER(obj, mem, type, args...) \
+    __YAN_LIST_STRUCT_MEMBER__(obj, mem, type, ##args)
 
 /**
  * @brief define an yan struct object member for the top struct obj
@@ -45,7 +45,8 @@ namespace yan {
  * @param mem struct member name
  * @param type member type, only support yan struct type define by yourself
  */
-// #define STRUCT_MEMBER(obj, mem, type, args...) __YAN_STRUCT_MEMBER__(obj, mem, type, ##args)
+#define STRUCT_MEMBER(obj, mem, YAN_STRUCT, args...) \
+    __YAN_STRUCT_MEMBER__(obj, mem, YAN_STRUCT, ##args)
 
 /**
  * @brief end of the struct

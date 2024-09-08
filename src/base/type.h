@@ -66,8 +66,7 @@ static inline std::string get_yan_type_str(const YanType type) {
     case YanType::b: { \
         return #b;     \
     }
-        FOR_EACH_BASIC_TYPE(T)
-        FOR_EACH_SPECIAL_TYPE(T)
+        FOR_EACH_TYPE(T)
 #undef T
         default:
             break;

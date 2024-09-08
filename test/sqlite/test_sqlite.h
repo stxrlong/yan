@@ -4,7 +4,7 @@
 #include <gtest/gtest.h>
 
 #include "sqlite/sqlite.h"
-#include "yan_struct.h"
+#include "sqlite_struct.h"
 
 namespace yan {
 namespace sqlite {

@@ -57,7 +57,8 @@ public:
         auto addr = (size_t)&cond;
         params_ = cys_->get_params(addr);
         if (!params_)
-            throw std::runtime_error("did you forget set parameter throw functions like AND/OR...");
+            throw std::runtime_error(
+                "did you forget set parameter through functions like AND/OR...");
 
         hash_ = cys_->get_hash(addr);
 
@@ -360,8 +361,7 @@ protected:
         int ret = 0;
         switch (info.type_) {
             case YanType::STRUCT: {
-                if ((ret = static_cast<Concrete&>(*this).struct_ref(obj, offset + info.offset_,
-                                                                    info)) < 0)
+                if ((ret = static_cast<Concrete&>(*this).struct_ref(obj, offset, info)) < 0)
                     return ret;
             } break;
             case YanType::LIST: {
@@ -427,7 +427,33 @@ public:
                 case YanType::LIST:
                     break;
                 default: {
-                    if ((ret = cond_ref(obj, cys, *param)) < 0) return ret;
+                    auto& info = cys[param->yan_seq()];
+                    if ((ret = cond_ref(obj, info.get_name(), *param)) < 0) return ret;
+                }
+            }
+        }
+
+        return ret;
+    }
+
+    template <typename RefObj>
+    inline int append_refobj_cond(Obj& obj, const RefObj& ro) {
+        auto ys = RefObj::get_yan_struct();
+        auto addr = (size_t)&ro;
+        auto& ps = ys->get_params(addr);
+        if (!ps)
+            throw std::runtime_error(
+                "did you forget set parameter through functions like AND/OR...");
+
+        int ret = 0;
+        auto& params = *ps;
+        for (auto& param : params) {
+            switch (param->yan_type()) {
+                case YanType::STRUCT:
+                case YanType::LIST:
+                    break;
+                default: {
+                    if ((ret = cond_ref(obj, param->name(), *param)) < 0) return ret;
                 }
             }
         }
@@ -463,20 +489,26 @@ public:
 protected:
     friend Base;
 
-    inline int cond_ref(Obj& obj, const YanStruct& ys, const ParamBase& param) {
-        auto& info = ys[param.yan_seq()];
-
+    inline int cond_ref(Obj& obj, const std::string& name, const ParamBase& param) {
         auto condtype = static_cast<CondType>(__GET_MEM_COND_TYPE__(param.yan_cond()));
         auto opstype = static_cast<YanOpsType>(__GET_MEM_OPS_TYPE__(param.yan_cond()));
 
-        MemRefOps ops(obj, info.get_name());
+        MemRefOps ops(obj, name);
         switch (param.yan_type()) {
-#define T(t, r)                                                                   \
-    case YanType::r: {                                                            \
-        return ops.template append<t>(condtype, opstype, [&param]() -> const t& { \
-            auto& pm = static_cast<const Param<t>&>(param);                       \
-            return pm.get();                                                      \
-        });                                                                       \
+#define T(t, r)                                                                       \
+    case YanType::r: {                                                                \
+        if (opstype == YanOpsType::EQUAL_LIST) {                                      \
+            return ops.template append<std::list<t>>(                                 \
+                condtype, opstype, [&param]() -> const std::list<t>& {                \
+                    auto& pm = static_cast<const Param<std::list<t>>&>(param);        \
+                    return pm.get();                                                  \
+                });                                                                   \
+        } else {                                                                      \
+            return ops.template append<t>(condtype, opstype, [&param]() -> const t& { \
+                auto& pm = static_cast<const Param<t>&>(param);                       \
+                return pm.get();                                                      \
+            });                                                                       \
+        }                                                                             \
     }
 
             FOR_EACH_BASIC_TYPE(T)
@@ -517,52 +549,98 @@ protected:
     }
 
     inline int list_ref(Obj& obj, const size_t offset, const MemberInfo& info) {
-        //         auto& listmember = info.list_member;
-        //         assert(listmember);
+        auto& listmember = info.list_member_;
+        assert(listmember);
 
-        //         if (listmember->get_list_size(offset) == 0) return 0;
+        if (listmember->size(offset) == 0) return 0;
 
-        //         ListRefOps ops(obj, listmember->get_name());
-        //         switch (listmember->get_yan_type()) {
-        //             case YanType::STRUCT:
-        //                 return listmember->get_obj_value(offset, [this, &listmember, &ops](const
-        //                 size_t offset) {
-        //                     return ops.append([this, &listmember, offset](Obj& obj) {
-        //                         auto sr = listmember->get_yan_struct();
-        //                         assert(sr);
+        ListRefOps ops(obj, info.get_name());
+        switch (listmember->yan_type()) {
+            case YanType::LIST: {
+                throw std::runtime_error("Lists within lists are prohibited");
+            }
+            case YanType::STRUCT: {
+                return listmember->get(offset, [this, listmember, &ops](const size_t objaddr) {
+                    return ops.append([this, &listmember, objaddr](Obj& obj) {
+                        auto ys = listmember->get_yan_struct();
+                        assert(ys);
 
-        //                         auto& members = sr->get_members();
-        //                         return this->traverse(obj, offset, members);
-        //                     });
-        //                 });
-        // #define T(t, r)                                 \
-//     case YanType::r:                            \
-//         return ops.template append<YanList<t>>( \
-//             listmember->get_yan_type(),         \
-//             [&offset, &listmember]() -> const YanList<t>& { return
-        //             listmember->get_value<t>(offset); });
-        //                 FOR_EACH_BASIC_TYPE(T)
-        //                 FOR_EACH_SPECIAL_TYPE(T)
-        // #undef T
-        //             default:
-        //                 assert(0);
-        //         }
+                        int ret = 0;
+                        auto& members = ys->get_members();
+                        for (auto& member : members)
+                            if ((ret = this->handle_info(obj, objaddr, *member)) < 0) break;
+
+                        return ret;
+                    });
+                });
+            }
+#define T(t, r)                               \
+    case YanType::r: {                        \
+        auto& l = listmember->get<t>(offset); \
+        return ops.template append<t>(l);     \
+    }
+                FOR_EACH_BASIC_TYPE(T)
+                FOR_EACH_SPECIAL_TYPE(T)
+#undef T
+            default:
+                assert(0);
+        }
 
         return 0;
     }
 
     inline int struct_ref(Obj& obj, const size_t offset, const MemberInfo& info) {
-        // auto& structmember = info.struct_member;
-        // assert(structmember);
+        auto structmember = info.struct_member_;
+        assert(structmember);
 
-        // // we must use info's name here
-        // StructRefOps ops(obj, (info.alias.empty() ? info.name : info.alias));
-        // return ops.append([this, &structmember, &offset](Obj& obj) {
-        //     auto& members = structmember->get_members();
-        //     return this->traverse(obj, offset, members);
-        // });
+        StructRefOps ops(obj, info.get_name());
+        auto objaddr = offset + info.offset_;
+        return ops.append([this, structmember, objaddr](Obj& obj) {
+            int ret = 0;
+            auto& members = structmember->get_members();
+            for (auto& member : members)
+                if ((ret = this->handle_info(obj, objaddr, *member)) < 0) break;
+
+            return ret;
+        });
         return 0;
     }
+};
+
+/*************************************ComReadRef****************************************/
+template <typename Context, typename MemRef>
+class ComReadRef {
+    class ReadListRef {
+    public:
+        ReadListRef(Context&, const std::string&) {
+            throw std::runtime_error("ComReadRef no list member");
+        }
+        int append(const RefOpsCallback<Context>&) {
+            throw std::runtime_error("ComReadRef no list member");
+            return -1;
+        }
+
+        template <typename T>
+        int append(const YanList<T>&) {
+            throw std::runtime_error("ComReadRef no list member");
+            return -1;
+        }
+    };
+
+    class ReadStructRef {
+    public:
+        ReadStructRef(Context&, const std::string&) {
+            throw std::runtime_error("ComReadRef no struct member");
+        }
+
+        int append(const RefOpsCallback<Context>&) {
+            throw std::runtime_error("ComReadRef no struct member");
+            return -1;
+        }
+    };
+
+public:
+    using ComReadRefOps = ReadRefOps<Context, MemRef, ReadListRef, ReadStructRef>;
 };
 
 /**************************************write refops***********************************/

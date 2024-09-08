@@ -20,43 +20,58 @@ using namespace std::placeholders;
 
 using ParamList = std::list<std::shared_ptr<ParamBase>>;
 using ParamListPtr = std::shared_ptr<ParamList>;
-#define __YAN_STRUCT__(OBJ, args...)                                                           \
-    class OBJ {                                                                                \
-    public:                                                                                    \
-        OBJ(const std::function<void(const uint16_t)> &deepcb) : deepcb_(deepcb) {}            \
-        OBJ() {}                                                                               \
-        ~OBJ() = default;                                                                      \
-                                                                                               \
-        static YanStruct *get_yan_struct() {                                                   \
-            static YanStruct __yan_struct_##OBJ##__(                                           \
-                YAN_STRUCT_CONSTRUCTOR(#OBJ, __OFFSET__(OBJ, conds_), __OFFSET__(OBJ, hashv_), \
-                                       __OFFSET__(OBJ, seqset_), ##args));                     \
-            return &__yan_struct_##OBJ##__;                                                    \
-        }                                                                                      \
-                                                                                               \
-    private:                                                                                   \
-        std::set<uint16_t> seqset_;                                                            \
-        ParamListPtr conds_ = nullptr;                                                         \
-        std::string hashv_ = "";                                                               \
-        std::function<void(const uint16_t)> deepcb_ = nullptr;                                 \
-                                                                                               \
-        inline void append(const uint16_t seq) { seqset_.insert(seq); }                        \
-        template <typename T>                                                                  \
-        inline void append(const char *name, const YanType type, const uint16_t cond,          \
-                           const uint16_t seq, T &&t) {                                        \
-            if (!conds_) conds_ = std::make_shared<ParamList>();                               \
-            if (deepcb_ && conds_->size() == 0) deepcb_(seq);                                  \
-            hashv_.append((char *)(&seq), 2) /* append((char *)(&cond), 2) */;                 \
-            conds_->emplace_back(                                                              \
-                std::make_shared<Param<T>>(name, type, cond, seq, std::forward<T>(t)));        \
-        }                                                                                      \
-        template <typename T>                                                                  \
-        inline void append(const char *name, const YanType type, const uint16_t cond,          \
-                           const uint16_t seq, const T &t) {                                   \
-            if (!conds_) conds_ = std::make_shared<ParamList>();                               \
-            if (deepcb_ && conds_->size() == 0) deepcb_(seq);                                  \
-            hashv_.append((char *)(&seq), 2).append((char *)(&cond), 2);                       \
-            conds_->emplace_back(std::make_shared<Param<T>>(name, type, cond, seq, t));        \
+#define __YAN_STRUCT__(OBJ, args...)                                                             \
+    class OBJ {                                                                                  \
+    public:                                                                                      \
+        OBJ(const std::function<void()> &deepcb,                                                 \
+            const std::function<void(std::shared_ptr<ParamBase> &)> &condcb)                     \
+            : deepcb_(deepcb), condcb_(condcb) {}                                                \
+        OBJ() {}                                                                                 \
+        ~OBJ() = default;                                                                        \
+                                                                                                 \
+        static YanStruct *get_yan_struct() {                                                     \
+            static YanStruct __yan_struct_##OBJ##__(                                             \
+                YAN_STRUCT_CONSTRUCTOR(#OBJ, __OFFSET__(OBJ, conds_), __OFFSET__(OBJ, hashv_),   \
+                                       __OFFSET__(OBJ, seqset_), ##args));                       \
+            return &__yan_struct_##OBJ##__;                                                      \
+        }                                                                                        \
+                                                                                                 \
+    private:                                                                                     \
+        std::set<uint16_t> seqset_;                                                              \
+        ParamListPtr conds_ = nullptr;                                                           \
+        std::string hashv_ = "";                                                                 \
+        std::function<void()> deepcb_ = nullptr;                                                 \
+        std::function<void(std::shared_ptr<ParamBase> &)> condcb_ = nullptr;                     \
+                                                                                                 \
+        inline void append(const uint16_t seq) {                                                 \
+            seqset_.insert(seq);                                                                 \
+            if (deepcb_) deepcb_();                                                              \
+        }                                                                                        \
+        inline void append(std::shared_ptr<ParamBase> &p) {                                      \
+            if (condcb_) return condcb_(p);                                                      \
+            if (!conds_) conds_ = std::make_shared<ParamList>();                                 \
+            auto cond = p->yan_cond();                                                           \
+            hashv_.append(p->name()).append((char *)(&cond), 2);                                 \
+            conds_->emplace_back(std::move(p));                                                  \
+        }                                                                                        \
+        template <typename T>                                                                    \
+        inline void append(const char *name, const YanType type, const uint16_t cond,            \
+                           const uint16_t seq, T &&t) {                                          \
+            std::shared_ptr<ParamBase> p =                                                       \
+                std::make_shared<Param<T>>(name, type, cond, seq, std::forward<T>(t));           \
+            if (condcb_) return condcb_(p);                                                      \
+            if (!conds_) conds_ = std::make_shared<ParamList>();                                 \
+            hashv_.append((char *)(&seq), 2).append((char *)(&cond), 2);                         \
+            conds_->emplace_back(std::move(p));                                                  \
+        }                                                                                        \
+        template <typename T>                                                                    \
+        inline void append(const char *name, const YanType type, const uint16_t cond,            \
+                           const uint16_t seq, const T &t) {                                     \
+            std::shared_ptr<ParamBase> p = std::make_shared<Param<T>>(name, type, cond, seq, t); \
+            if (condcb_) return condcb_(p);                                                      \
+            if (!conds_) conds_ = std::make_shared<ParamList>();                                 \
+            hashv_.append((char *)(&seq), 2).append((char *)(&cond), 2);                         \
+            conds_->emplace_back(std::move(p));                                                  \
         }
 
 #define __SET_MEM_COND_TYPE__(YTYPE, MEM, opstype, value)                                   \
@@ -144,7 +159,7 @@ public:                                                                         
             if (cond_ > 0) {                                                                      \
                 throw std::runtime_error(                                                         \
                     "You need to use conditional statements, such as ==, >, <=, instead of "      \
-                    "assignment statements, when you specify the conditon type: " +               \
+                    "assignment['='] statements, when you specify the conditon type: " +          \
                     get_yan_cond_str(static_cast<CondType>(cond_)));                              \
             } else {                                                                              \
                 if (yantype_ == YanType::AUTO_INCREMENT) {                                        \
@@ -168,7 +183,7 @@ public:                                                                         
         }                                                                                         \
         inline void operator==(std::initializer_list<TYPE> rlist) {                               \
             __SET_MEM_COND_TYPE__(YTYPE, MEM, YanOpsType::EQUAL_LIST,                             \
-                                  std::forward<std::list<TYPE>>(rlist));                          \
+                                  std::forward<YanList<TYPE>>(rlist));                            \
         }                                                                                         \
         inline void operator>(const TYPE &r) {                                                    \
             __SET_MEM_COND_TYPE__(YTYPE, MEM, YanOpsType::LARGE, r);                              \
@@ -202,6 +217,184 @@ private:                                                                        
                 __OFFSET__(OBJ::__yan_member_##MEM##__, OBJ::__yan_member_##MEM##__::flag_), cb); \
         }                                                                                         \
     } __yan_member_reg_##MEM##__{[this](uint16_t seq) { this->__yan_member_seq_##MEM##__(seq); }};
+
+/***********************************YAN LIST MEMBER ****************************************/
+#define __YAN_LIST_MEMBER__(OBJ, MEM, YTYPE, args...)                                              \
+private:                                                                                           \
+    uint16_t __yan_member_seq_##MEM##__(const uint16_t seq = 0) {                                  \
+        static uint16_t s = seq;                                                                   \
+        return s;                                                                                  \
+    }                                                                                              \
+    friend class __yan_list_member_##MEM##__;                                                      \
+                                                                                                   \
+public:                                                                                            \
+    class __yan_list_member_##MEM##__ : private YanList<YANTYPE<YTYPE>> {                          \
+        using Base = YanList<YANTYPE<YTYPE>>;                                                      \
+                                                                                                   \
+    public:                                                                                        \
+        __yan_list_member_##MEM##__(OBJ *obj) : obj_(obj) {}                                       \
+        inline void operator=(std::initializer_list<YANTYPE<YTYPE>> l) {                           \
+            Base::assign(l);                                                                       \
+            if (!flag_) {                                                                          \
+                obj_->append(obj_->__yan_member_seq_##MEM##__());                                  \
+                flag_ = true;                                                                      \
+            }                                                                                      \
+        }                                                                                          \
+        inline void emplace_back(YANTYPE<YTYPE> &&v) {                                             \
+            Base::emplace_back(std::forward<YANTYPE<YTYPE>>(v));                                   \
+            if (!flag_) {                                                                          \
+                obj_->append(obj_->__yan_member_seq_##MEM##__());                                  \
+                flag_ = true;                                                                      \
+            }                                                                                      \
+        }                                                                                          \
+        inline void emplace_back(const YANTYPE<YTYPE> &v) {                                        \
+            Base::emplace_back(v);                                                                 \
+            if (!flag_) {                                                                          \
+                obj_->append(obj_->__yan_member_seq_##MEM##__());                                  \
+                flag_ = true;                                                                      \
+            }                                                                                      \
+        }                                                                                          \
+        inline __yan_list_member_##MEM##__ &AND() {                                                \
+            cond_ = static_cast<uint8_t>(CondType::AND);                                           \
+            return *this;                                                                          \
+        }                                                                                          \
+        inline void operator==(std::initializer_list<YANTYPE<YTYPE>> rlist) {                      \
+            __SET_MEM_COND_TYPE__(YTYPE, MEM, YanOpsType::EQUAL_LIST,                              \
+                                  std::forward<YanList<YANTYPE<YTYPE>>>(rlist));                   \
+        }                                                                                          \
+                                                                                                   \
+    private:                                                                                       \
+        uint8_t cond_{0};                                                                          \
+        bool flag_{false};                                                                         \
+        OBJ *obj_ = nullptr;                                                                       \
+    } MEM{this};                                                                                   \
+                                                                                                   \
+private:                                                                                           \
+    class __yan_list_member_register_##MEM##__ {                                                   \
+    public:                                                                                        \
+        __yan_list_member_register_##MEM##__(const std::function<void(uint16_t)> &cb) {            \
+            static MemberInfo *info =                                                              \
+                MEMBER_INFO_CONSTRUCTOR(#MEM, __OFFSET__(OBJ, MEM), YanType::LIST, ##args);        \
+            static __yan_list_member_register__ __yan_reg_##mem(                                   \
+                OBJ::get_yan_struct(), info, YTYPE,                                                \
+                [](const size_t offset) { return ((YanList<YANTYPE<YTYPE>> *)(offset))->size(); }, \
+                cb);                                                                               \
+        }                                                                                          \
+    } __yan_list_member_reg_##MEM##__{                                                             \
+        [this](uint16_t seq) { this->__yan_member_seq_##MEM##__(seq); }};
+
+/*******************************YAN LIST STRUCT MEMBER *************************************/
+#define __YAN_LIST_STRUCT_MEMBER__(OBJ, MEM, SONOBJ, args...)                                   \
+private:                                                                                        \
+    uint16_t __yan_member_seq_##MEM##__(const uint16_t seq = 0) {                               \
+        static uint16_t s = seq;                                                                \
+        return s;                                                                               \
+    }                                                                                           \
+    friend class __yan_list_member_##MEM##__;                                                   \
+                                                                                                \
+public:                                                                                         \
+    class __yan_list_member_##MEM##__ : private YanList<SONOBJ> {                               \
+        using Base = YanList<SONOBJ>;                                                           \
+                                                                                                \
+    public:                                                                                     \
+        __yan_list_member_##MEM##__(OBJ *obj) : obj_(obj) {}                                    \
+        ~__yan_list_member_##MEM##__() {                                                        \
+            if (cond) delete cond;                                                              \
+            cond = nullptr;                                                                     \
+        }                                                                                       \
+        inline void emplace_back(SONOBJ &&son) {                                                \
+            Base::emplace_back(std::forward<SONOBJ>(son));                                      \
+            if (!flag_) {                                                                       \
+                obj_->append(obj_->__yan_member_seq_##MEM##__());                               \
+                flag_ = true;                                                                   \
+            }                                                                                   \
+        }                                                                                       \
+        inline void emplace_back(const SONOBJ &son) {                                           \
+            Base::emplace_back(son);                                                            \
+            if (!flag_) {                                                                       \
+                obj_->append(obj_->__yan_member_seq_##MEM##__());                               \
+                flag_ = true;                                                                   \
+            }                                                                                   \
+        }                                                                                       \
+        inline SONOBJ &COND() {                                                                 \
+            if (!cond) {                                                                        \
+                auto seq = obj_->__yan_member_seq_##MEM##__();                                  \
+                cond = new SONOBJ([this, seq]() { this->obj_->append(seq); },                   \
+                                  [this](std::shared_ptr<ParamBase> &p) {                       \
+                                      assert(p);                                                \
+                                      p->prefix(#MEM);                                          \
+                                      this->obj_->append(p);                                    \
+                                  });                                                           \
+                if (!cond) throw std::runtime_error("out of memory");                           \
+            }                                                                                   \
+            return *cond;                                                                       \
+        }                                                                                       \
+                                                                                                \
+    private:                                                                                    \
+        SONOBJ *cond = nullptr;                                                                 \
+        OBJ *obj_ = nullptr;                                                                    \
+        bool flag_{false};                                                                      \
+    } MEM{this};                                                                                \
+                                                                                                \
+private:                                                                                        \
+    class __yan_list_member_register_##MEM##__ {                                                \
+    public:                                                                                     \
+        __yan_list_member_register_##MEM##__(const std::function<void(uint16_t)> &cb) {         \
+            static MemberInfo *info =                                                           \
+                MEMBER_INFO_CONSTRUCTOR(#MEM, __OFFSET__(OBJ, MEM), YanType::LIST, ##args);     \
+            static __yan_list_member_register__ __yan_reg_##mem(                                \
+                OBJ::get_yan_struct(), info, SONOBJ::get_yan_struct(),                          \
+                [](const size_t offset, const ListGetObjCallback &cb) {                         \
+                    if (!cb) return -1;                                                         \
+                                                                                                \
+                    int ret = 0;                                                                \
+                    auto &l = *((YanList<SONOBJ> *)(offset));                                   \
+                    for (auto &v : l) {                                                         \
+                        if ((ret = cb((size_t)(&(v)))) < 0) return ret;                         \
+                    }                                                                           \
+                    return 0;                                                                   \
+                },                                                                              \
+                [](const size_t offset, const ListSetObjCallback &cb) {                         \
+                    if (!cb) return -1;                                                         \
+                                                                                                \
+                    int ret = 0;                                                                \
+                    SONOBJ o;                                                                   \
+                    if ((ret = cb((size_t) & o)) < 0) return ret;                               \
+                    ((YanList<SONOBJ> *)(offset))->emplace_back(std::move(o));                  \
+                    return 0;                                                                   \
+                },                                                                              \
+                [](const size_t offset) { return ((YanList<SONOBJ> *)(offset))->size(); }, cb); \
+        }                                                                                       \
+    } __yan_list_member_reg_##MEM##__{                                                          \
+        [this](uint16_t seq) { this->__yan_member_seq_##MEM##__(seq); }};
+
+/*******************************YAN STRUCT MEMBER *************************************/
+#define __YAN_STRUCT_MEMBER__(OBJ, MEM, SONOBJ, args...)                                         \
+private:                                                                                         \
+    uint16_t __yan_member_seq_##MEM##__(const uint16_t seq = 0) {                                \
+        static uint16_t s = seq;                                                                 \
+        return s;                                                                                \
+    }                                                                                            \
+                                                                                                 \
+public:                                                                                          \
+    SONOBJ MEM{[this]() { append(__yan_member_seq_##MEM##__()); },                               \
+               [this](std::shared_ptr<ParamBase> &p) {                                           \
+                   assert(p);                                                                    \
+                   p->prefix(#MEM);                                                              \
+                   this->append(p);                                                              \
+               }};                                                                               \
+                                                                                                 \
+private:                                                                                         \
+    class __yan_struct_member_register_##mem##__ {                                               \
+    public:                                                                                      \
+        __yan_struct_member_register_##mem##__(const std::function<void(uint16_t)> &cb) {        \
+            static MemberInfo *info =                                                            \
+                MEMBER_INFO_CONSTRUCTOR(#MEM, __OFFSET__(OBJ, MEM), YanType::STRUCT, ##args);    \
+            static __yan_struct_member_register__ __yan_reg_##mem(OBJ::get_yan_struct(), info,   \
+                                                                  SONOBJ::get_yan_struct(), cb); \
+        }                                                                                        \
+    } __yan_struct_member_reg_##mem##__{                                                         \
+        [this](uint16_t seq) { this->__yan_member_seq_##MEM##__(seq); }};
 
 #define __YAN_STRUCT_END__ \
     }                      \
@@ -468,10 +661,86 @@ public:
     }
 
 private:
-    YanType type_;
+    const YanType type_;
 
-    size_t foffset_;
-    size_t voffset_;
+    const size_t foffset_;
+    const size_t voffset_;
+};
+
+using ListSizeCallback = std::function<size_t(const size_t)>;
+using ListGetObjCallback = std::function<int(const size_t)>;
+using ListSetObjCallback = std::function<int(const size_t)>;
+template <typename T>
+using ListObjCallback = std::function<int(const size_t, const T &cb)>;
+class YanListMember {
+public:
+    YanListMember(const YanType type, const size_t offset, ListSizeCallback sizecb)
+        : type_(type),
+          offset_(offset),
+          s_(nullptr),
+          setobjcb_(nullptr),
+          getobjcb_(nullptr),
+          sizecb_(sizecb) {
+        assert(sizecb_);
+    }
+    YanListMember(YanStruct *s, const size_t offset, ListObjCallback<ListGetObjCallback> getobjcb,
+                  ListObjCallback<ListSetObjCallback> setobjcb, ListSizeCallback sizecb)
+        : type_(YanType::STRUCT),
+          s_(s),
+          offset_(offset),
+          setobjcb_(setobjcb),
+          getobjcb_(getobjcb),
+          sizecb_(sizecb) {
+        assert(s_ && setobjcb_ && getobjcb_ && sizecb_);
+    }
+
+    inline const YanType yan_type() const { return type_; }
+    const size_t size(const size_t objaddr) { return sizecb_(objaddr); }
+
+    /**
+     * @brief if the value type of list is not a YanStruct, please use the following funcs
+     */
+    template <typename T>
+    inline const YanList<T> &get(const size_t objaddr) {
+        return *((YanList<T> *)(objaddr + offset_));
+    }
+
+    template <typename T>
+    inline void set(const size_t objaddr, T &t) {
+        ((YanList<T> *)(objaddr + offset_))->emplace_back(std::move(t));
+    }
+
+    template <typename T>
+    inline void set(const size_t objaddr, const T &t) {
+        ((YanList<T> *)(objaddr + offset_))->emplace_back(t);
+    }
+
+    template <typename T>
+    inline void set(const size_t objaddr, T &&t) {
+        ((YanList<T> *)(objaddr + offset_))->emplace_back(std::forward<T>(t));
+    }
+
+    /**
+     * @brief use the following funcs if the value type of list is a YanStruct
+     */
+    inline const YanStruct *get_yan_struct() const { return s_; }
+
+    // we sure setobjcb_/getobjcb_ won't be null
+    inline int set(const size_t objaddr, const ListSetObjCallback &cb) {
+        return setobjcb_(objaddr + offset_, cb);
+    }
+    inline int get(const size_t objaddr, const ListGetObjCallback &cb) {
+        return getobjcb_(objaddr + offset_, cb);
+    }
+
+private:
+    const YanType type_;
+    const size_t offset_;
+
+    const YanStruct *s_ = nullptr;
+    const ListSizeCallback sizecb_ = nullptr;
+    const ListObjCallback<ListSetObjCallback> setobjcb_ = nullptr;
+    const ListObjCallback<ListGetObjCallback> getobjcb_ = nullptr;
 };
 
 /***********************************field bridge****************************************/
@@ -516,6 +785,31 @@ public:
         if (!found)
             throw std::runtime_error(std::string("no such member [") + name + ("] in struct [") +
                                      from->get_origin_name() + "]");
+    }
+};
+
+class __yan_list_member_register__ {
+public:
+    __yan_list_member_register__(YanStruct *obj, MemberInfo *info, YanStruct *son,
+                                 ListObjCallback<ListGetObjCallback> getobjcb,
+                                 ListObjCallback<ListSetObjCallback> setobjcb,
+                                 ListSizeCallback sizecb, const std::function<void(uint16_t)> &cb) {
+        info->list_member_ = new YanListMember(son, info->offset_, getobjcb, setobjcb, sizecb);
+        if (cb) cb(obj->add(info));
+    }
+    __yan_list_member_register__(YanStruct *obj, MemberInfo *info, YanType type,
+                                 ListSizeCallback sizecb, const std::function<void(uint16_t)> &cb) {
+        info->list_member_ = new YanListMember(type, info->offset_, sizecb);
+        if (cb) cb(obj->add(info));
+    }
+};
+
+class __yan_struct_member_register__ {
+public:
+    __yan_struct_member_register__(YanStruct *obj, MemberInfo *info, YanStruct *son,
+                                   const std::function<void(uint16_t)> &cb) {
+        info->struct_member_ = son;
+        if (cb) cb(obj->add(info));
     }
 };
 

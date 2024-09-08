@@ -11,25 +11,8 @@ extern "C" {
 namespace yan {
 namespace sqlite {
 
-/*************************************SqliteReadRef****************************************/
-class SqliteReadRef {
-protected:
-    class ReadListRef {
-    public:
-        ReadListRef() {}
-    };
-
-    class ReadStructRef {
-    public:
-        ReadStructRef() {}
-    };
-
-    template <typename Context, typename MemRef>
-    using SqliteReadRefOps = ReadRefOps<Context, MemRef, ReadListRef, ReadStructRef>;
-};
-
 /************************************create table sql****************************************/
-class MakeTableSql : public SqliteReadRef {
+class MakeTableSql {
     struct SqlContext {
         std::string fields_;
 
@@ -37,7 +20,7 @@ class MakeTableSql : public SqliteReadRef {
     } sqlctx_;
 
     class ReadMemRef;
-    using TableSqlOps = SqliteReadRefOps<SqlContext, ReadMemRef>;
+    using TableSqlOps = ComReadRef<SqlContext, ReadMemRef>::ComReadRefOps;
     TableSqlOps tableops_;
 
 public:
@@ -75,7 +58,7 @@ private:
 };
 
 /*************************************MakeInsertSql****************************************/
-class MakeInsertSql : public SqliteReadRef {
+class MakeInsertSql {
     struct SqlContext {
         std::string fields_;
         std::string values_;
@@ -90,7 +73,7 @@ class MakeInsertSql : public SqliteReadRef {
     } sqlctx_;
 
     class ReadMemRef;
-    using InsertSqlOps = SqliteReadRefOps<SqlContext, ReadMemRef>;
+    using InsertSqlOps = ComReadRef<SqlContext, ReadMemRef>::ComReadRefOps;
     InsertSqlOps insertops_;
 
 public:
@@ -168,7 +151,7 @@ private:
 };
 
 /*************************************MakeQuerySql****************************************/
-class MakeQuerySql : public SqliteReadRef {
+class MakeQuerySql {
 protected:
     struct SqlContext {
         std::string sql_;
@@ -177,7 +160,7 @@ protected:
     } sqlctx_;
 
     class ReadMemRef;
-    using QuerySqlOps = SqliteReadRefOps<SqlContext, ReadMemRef>;
+    using QuerySqlOps = ComReadRef<SqlContext, ReadMemRef>::ComReadRefOps;
     QuerySqlOps queryops_;
 
 public:
@@ -240,7 +223,7 @@ class MakeUpdateSql : protected MakeQuerySql {
     } fieldctx_;
 
     class ReadFieldMemRef;
-    using UpdateSqlOps = SqliteReadRefOps<FieldContext, ReadFieldMemRef>;
+    using UpdateSqlOps = ComReadRef<FieldContext, ReadFieldMemRef>::ComReadRefOps;
     UpdateSqlOps updateops_;
 
 public:
@@ -282,14 +265,14 @@ public:
 };
 
 /*************************************SetParameter****************************************/
-class BindSqlParam : public SqliteReadRef {
+class BindSqlParam {
     struct BindContext {
         sqlite3_stmt *stmt_ = nullptr;
         int index_ = 0;
     } bindctx_;
 
     class ReadMemRef;
-    using BindSqlOps = SqliteReadRefOps<BindContext, ReadMemRef>;
+    using BindSqlOps = ComReadRef<BindContext, ReadMemRef>::ComReadRefOps;
     BindSqlOps bindops_;
 
 public:

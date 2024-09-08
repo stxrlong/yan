@@ -12,6 +12,8 @@ public:
         : name_(name), type_(type), cond_(cond), seq_(seq) {}
     ParamBase() {}
 
+    inline void prefix(const std::string& prefix) { name_ = prefix + "." + name_; }
+
     inline const std::string& name() const { return name_; }
     inline const YanType yan_type() const { return static_cast<YanType>(type_); }
     inline const uint16_t yan_cond() const { return cond_; }

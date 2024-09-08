@@ -30,8 +30,9 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/cmake)
 include(boost)
-include(sqlite)
 include(concurrentqueue)
+include(sqlite)
+include(mongocxx)
 
 add_subdirectory(src)
 

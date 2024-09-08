@@ -2,8 +2,6 @@
 
 #include "test_sqlite.h"
 
-#include "yan_struct.h"
-
 namespace yan {
 namespace sqlite {
 
