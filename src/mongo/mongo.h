@@ -24,6 +24,11 @@ public:
         return create_event<int64_t, WriteEvent>(std::forward<Args>(args)...);
     }
 
+    template <typename Ret, typename... Args>
+    inline future<Ret> read(Args &&...args) {
+        return create_event<Ret, ReadEvent<Ret>>(std::forward<Args>(args)...);
+    }
+
 private:
     template <typename Ret, typename MongoEvent, typename... Args>
     inline future<Ret> create_event(Args &&...args) {

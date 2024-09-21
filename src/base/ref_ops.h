@@ -560,7 +560,7 @@ protected:
                 throw std::runtime_error("Lists within lists are prohibited");
             }
             case YanType::STRUCT: {
-                return listmember->get(offset, [this, listmember, &ops](const size_t objaddr) {
+                return listmember->get_obj(offset, [this, listmember, &ops](const size_t objaddr) {
                     return ops.append([this, &listmember, objaddr](Obj& obj) {
                         auto ys = listmember->get_yan_struct();
                         assert(ys);
@@ -613,16 +613,16 @@ class ComReadRef {
     class ReadListRef {
     public:
         ReadListRef(Context&, const std::string&) {
-            throw std::runtime_error("ComReadRef no list member");
+            throw std::runtime_error("ComReadRef has no list member");
         }
         int append(const RefOpsCallback<Context>&) {
-            throw std::runtime_error("ComReadRef no list member");
+            throw std::runtime_error("ComReadRef has no list member");
             return -1;
         }
 
         template <typename T>
         int append(const YanList<T>&) {
-            throw std::runtime_error("ComReadRef no list member");
+            throw std::runtime_error("ComReadRef has no list member");
             return -1;
         }
     };
@@ -630,11 +630,11 @@ class ComReadRef {
     class ReadStructRef {
     public:
         ReadStructRef(Context&, const std::string&) {
-            throw std::runtime_error("ComReadRef no struct member");
+            throw std::runtime_error("ComReadRef has no struct member");
         }
 
         int append(const RefOpsCallback<Context>&) {
-            throw std::runtime_error("ComReadRef no struct member");
+            throw std::runtime_error("ComReadRef has no struct member");
             return -1;
         }
     };
@@ -656,7 +656,7 @@ public:
     ~WriteRefOps() = default;
 
     template <typename RefObj>
-    inline int get(Obj& obj, RefObj& co) {
+    inline int get(RefObj& co, Obj& obj) {
         return Base::set_value(co, obj);
     }
 
@@ -688,51 +688,96 @@ protected:
     }
 
     inline int list_ref(Obj& obj, const size_t offset, const MemberInfo& info) {
-        //         auto& listmember = info.list_member;
-        //         assert(listmember);
+        auto& listmember = info.list_member_;
+        assert(listmember);
 
-        //         ListRefOps ops(obj, listmember->get_name());
-        //         switch (listmember->get_yan_type()) {
-        //             case YanType::STRUCT:
-        //                 return listmember->set_obj_value(offset, [this, &listmember, &ops](const
-        //                 size_t offset) {
-        //                     return ops.get([this, &listmember, offset](Obj& obj) {
-        //                         auto sr = listmember->get_yan_struct();
-        //                         assert(sr);
+        ListRefOps ops(obj, info.get_name());
+        switch (listmember->yan_type()) {
+            case YanType::LIST: {
+                throw std::runtime_error("Lists within lists are prohibited");
+            }
+            case YanType::STRUCT:
+                return listmember->set_obj(offset, [this, &listmember, &ops](const size_t objaddr) {
+                    return ops.get([this, &listmember, objaddr](Obj& obj) {
+                        auto ys = listmember->get_yan_struct();
+                        assert(ys);
 
-        //                         auto& members = sr->get_members();
-        //                         return this->traverse(obj, offset, members);
-        //                     });
-        //                 });
-        // #define T(t, r) \
-//     case YanType::r: \
-//         return ops.template get(listmember->get_yan_type(), [&offset, &listmember](t&&
-        //         val) { \
-//             listmember->set_value<t>(offset, std::forward<t>(val)); \
-//             return 0; \
-//         });
-        //                 FOR_EACH_BASIC_TYPE(T)
-        //                 FOR_EACH_SPECIAL_TYPE(T)
-        // #undef T
+                        int ret = 0;
+                        auto& members = ys->get_members();
+                        for (auto& member : members)
+                            if ((ret = this->handle_info(obj, objaddr, *member)) < 0) break;
 
-        //             default:
-        //                 assert(0);
-        //         }
+                        return ret;
+                    });
+                });
+#define T(t, r)                                                      \
+    case YanType::r:                                                 \
+        return ops.template get<t>([&offset, &listmember](t&& val) { \
+            listmember->set<t>(offset, std::forward<t>(val));        \
+            return 0;                                                \
+        });
+                FOR_EACH_BASIC_TYPE(T)
+                FOR_EACH_SPECIAL_TYPE(T)
+#undef T
+
+            default:
+                assert(0);
+        }
 
         return 0;
     }
 
     inline int struct_ref(Obj& obj, const size_t offset, const MemberInfo& info) {
-        // auto& structmember = info.struct_member;
-        // assert(structmember);
+        auto& structmember = info.struct_member_;
+        assert(structmember);
 
-        // StructRefOps ops(obj, structmember->get_name());
-        // return ops.get([this, &structmember, &offset](Obj& obj) {
-        //     auto& members = structmember->get_members();
-        //     return this->traverse(obj, offset, members);
-        // });
-        return 0;
+        StructRefOps ops(obj, info.get_name());
+        auto objaddr = offset + info.offset_;
+        return ops.get([this, structmember, &objaddr](Obj& obj) {
+            int ret = 0;
+            auto& members = structmember->get_members();
+            for (auto& member : members)
+                if ((ret = this->handle_info(obj, objaddr, *member)) < 0) break;
+
+            return ret;
+        });
     }
 };
 
+/*************************************ComWriteRef****************************************/
+template <typename Context, typename MemRef>
+class ComWriteRef {
+    class WriteListRef {
+    public:
+        WriteListRef(Context&, const std::string&) {
+            throw std::runtime_error("ComWriteRef has no list member");
+        }
+
+        inline int get(const RefOpsCallback<Context>& cb) {
+            throw std::runtime_error("ComWriteRef has no list member");
+            return -1;
+        }
+
+        template <typename T>
+        inline int get(const WriteRefCallback<T>& cb) {
+            throw std::runtime_error("ComWriteRef has no list member");
+            return -1;
+        }
+    };
+
+    class WriteStructRef {
+    public:
+        WriteStructRef(Context&, const std::string&) {
+            throw std::runtime_error("ComWriteRef has no struct member");
+        }
+
+        int get(const RefOpsCallback<Context>& cb) {
+            throw std::runtime_error("ComWriteRef has no struct member");
+            return -1;
+        }
+    };
+
+public:
+    using ComWriteRefOps = WriteRefOps<Context, MemRef, WriteListRef, WriteStructRef>;
+};
 }  // namespace yan

@@ -9,45 +9,31 @@ extern "C" {
 
 namespace yan {
 namespace sqlite {
-/*************************************SqliteWriteRef****************************************/
-class SqliteWriteRef {
-protected:
-    class WriteListRef {
-    public:
-        WriteListRef() {}
-    };
-
-    class WriteStructRef {
-    public:
-        WriteStructRef() {}
-    };
-
-    template <typename Context, typename MemRef>
-    using SqliteWriteRefOps = WriteRefOps<Context, MemRef, WriteListRef, WriteStructRef>;
-};
 
 /*************************************FetchResult****************************************/
-class FetchSqlResult : public SqliteWriteRef {
+class FetchSqlResult {
     struct FetchContext {
         sqlite3_stmt *stmt_ = nullptr;
         int col_ = -1;
     } fetchctx_;
 
     class WriteMemRef;
-    using FetchSqlOps = SqliteWriteRefOps<FetchContext, WriteMemRef>;
+    using FetchSqlOps = ComWriteRef<FetchContext, WriteMemRef>::ComWriteRefOps;
     FetchSqlOps fetchops_;
 
 public:
     FetchSqlResult(sqlite3_stmt *stmt) { fetchctx_.stmt_ = stmt; }
 
-    template <typename CondObj>
-    inline void fetch(CondObj &condobj) {
-        int ret = fetchops_.get(fetchctx_, condobj);
+    template <typename RefObj>
+    inline void fetch(RefObj &ro) {
+        int ret = fetchops_.get(ro, fetchctx_);
         if (ret < 0) throw std::runtime_error("sqlite fetch result failed: " + std::to_string(ret));
     }
 
-	template<>
-    inline void fetch(int64_t &count) { count = (int64_t)sqlite3_column_int64(fetchctx_.stmt_, 0); }
+    template <>
+    inline void fetch(int64_t &count) {
+        count = (int64_t)sqlite3_column_int64(fetchctx_.stmt_, 0);
+    }
 
 private:
     class WriteMemRef {

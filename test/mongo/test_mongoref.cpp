@@ -2,7 +2,7 @@
 
 #include <gtest/gtest.h>
 
-#include "mongo/mongo_readref.h"
+#include "mongo/mongo_writeref.h"
 #include "mongo_struct.h"
 
 namespace yan {
@@ -54,6 +54,47 @@ TEST(TestMongoReadRef, mongoread) {
     auto doc = ops.make(data);
 
     logger_debug("cond bson: %s", bsoncxx::to_json(doc.view()).c_str());
+}
+
+TEST(TestMongoWriteRef, mongofetch) {
+    document doc;
+    doc << "name" << "MongoDB" << "versions" << open_array << "v6.0"
+        << "v5.0" << close_array << "drivers" << open_array << open_document << "lang" << "cxx"
+        << close_document << close_array << "info" << open_document << "x" << "203"
+        << close_document;
+
+    logger_debug("value bson: %s", bsoncxx::to_json(doc.view()).c_str());
+
+    Data data;
+
+    FetchMongoResult ops;
+    int ret = ops.fetch(data, doc);
+    ASSERT_EQ(ret, 0);
+
+    logger_debug("data.name: %s", data.name.VALUE().c_str());
+
+    std::string vs;
+    auto count = 0;
+    for (auto &v : data.versions) {
+        if (++count != 1) vs += ", ";
+        vs += v;
+    }
+
+    logger_debug("data.versions: %s", vs.c_str());
+
+    std::string ds;
+    count = 0;
+    ds += "[ ";
+    for (auto &d : data.drivers) {
+        if (++count != 1) ds += ", ";
+        ds += "{ lang: ";
+        ds += d.lang;
+        ds += " }";
+    }
+    ds += " ]";
+
+    logger_debug("data.drivers: %s", ds.c_str());
+    logger_debug("data.info.x: %s", data.info.x.VALUE().c_str());
 }
 
 }  // namespace mongo

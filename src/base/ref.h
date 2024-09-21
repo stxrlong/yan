@@ -240,6 +240,8 @@ public:                                                                         
                 flag_ = true;                                                                      \
             }                                                                                      \
         }                                                                                          \
+        using Base::begin;                                                                         \
+        using Base::end;                                                                           \
         inline void emplace_back(YANTYPE<YTYPE> &&v) {                                             \
             Base::emplace_back(std::forward<YANTYPE<YTYPE>>(v));                                   \
             if (!flag_) {                                                                          \
@@ -302,6 +304,8 @@ public:                                                                         
             if (cond) delete cond;                                                              \
             cond = nullptr;                                                                     \
         }                                                                                       \
+        using Base::begin;                                                                      \
+        using Base::end;                                                                        \
         inline void emplace_back(SONOBJ &&son) {                                                \
             Base::emplace_back(std::forward<SONOBJ>(son));                                      \
             if (!flag_) {                                                                       \
@@ -726,10 +730,10 @@ public:
     inline const YanStruct *get_yan_struct() const { return s_; }
 
     // we sure setobjcb_/getobjcb_ won't be null
-    inline int set(const size_t objaddr, const ListSetObjCallback &cb) {
+    inline int set_obj(const size_t objaddr, const ListSetObjCallback &cb) {
         return setobjcb_(objaddr + offset_, cb);
     }
-    inline int get(const size_t objaddr, const ListGetObjCallback &cb) {
+    inline int get_obj(const size_t objaddr, const ListGetObjCallback &cb) {
         return getobjcb_(objaddr + offset_, cb);
     }
 
