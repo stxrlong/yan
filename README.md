@@ -43,10 +43,10 @@ We use the great characteristc `promise/future`, so you can use asynchronous mod
 
 Because of the omitted function `then` in STL `promise/future`, we depend on the `boost` library to provide the asynchronous feature.
 
-Since some functions are not yet complete, it has not been compiled into library, but you can directly copy the `src` code for use. The test case form is already supported
+You can directly copy the `src` code to use, or compile and use libyan in `build/lib`. This library already supports common functions, and you can use it according to the supported test cases.
 
 ```
-mkdir build && cmake -DBUILD_TEST=ON .. && ctest
+mkdir build && cmake -DCONCURRENTQUEUE_PATH=/usr/local/concurrentqueue/ -DSQLITE_PATH=/usr/local/sqlite3/ -DBUILD_TEST=ON .. && ctest
 ```
 
 ## Usage
@@ -419,7 +419,8 @@ data.drivers = {
 	 .download = 120
 	}
 };
-data.info = {.x = "203", .y = 201};
+data.info.x = "203";
+data.info.y = 102;
 
 auto ret = db.write(data); 
 ```
@@ -438,7 +439,7 @@ You have to parse the cursor_filtered if you want to get the detailed values, an
 ```
 Data cond;
 cond.name.AND() == "mongodb";
-cond.versions.AND() == {"v6.0", "v5.0"};
+cond.versions.AND() == std::initializer_list<std::string>{"v6.0", "v5.0"};
 auto fut = db.Read<std::list<Data>>(cond);
 ```
 
