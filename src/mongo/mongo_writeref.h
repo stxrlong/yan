@@ -20,8 +20,8 @@ public:
     ~FetchMongoResult() = default;
 
     template <typename RefObj>
-    inline int fetch(RefObj &ro, const document &doc) {
-        int ret = ops_.get(ro, doc.view());
+    inline int fetch(RefObj &ro, const view &view) {
+        int ret = ops_.get(ro, view);
         if (ret < 0) throw std::runtime_error("mongo fetch result failed: " + std::to_string(ret));
 
         return ret;

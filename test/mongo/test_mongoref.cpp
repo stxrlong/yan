@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include "mongo/mongo_writeref.h"
+#include "mongo/mongo_readref.h"
 #include "mongo_struct.h"
 
 namespace yan {
@@ -68,7 +69,7 @@ TEST(TestMongoWriteRef, mongofetch) {
     Data data;
 
     FetchMongoResult ops;
-    int ret = ops.fetch(data, doc);
+    int ret = ops.fetch(data, doc.view());
     ASSERT_EQ(ret, 0);
 
     logger_debug("data.name: %s", data.name.VALUE().c_str());
